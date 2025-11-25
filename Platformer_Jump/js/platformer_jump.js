@@ -20,7 +20,10 @@ const images = {
   playerSitLeft: new Image(),
   storyStar: new Image(),
   woodNo: new Image(),
-  wood: new Image()
+  wood: new Image(),
+  fairy1: new Image(),
+  fairy2: new Image(),
+  fairy3: new Image()
 };
 
 // 이미지 경로 설정
@@ -32,6 +35,9 @@ images.playerSitLeft.src = "images/sit_left.png";
 images.storyStar.src = "Story/story_star.png";
 images.woodNo.src = "images/woood_no.png";
 images.wood.src = "images/wood.png";
+images.fairy1.src = "images/fairy.png";
+images.fairy2.src = "images/fairy(1).png";
+images.fairy3.src = "images/fairy(3).png";
 
 // 이미지 로드 완료 체크
 let imagesLoaded = 0;
@@ -51,6 +57,62 @@ Object.values(images).forEach(img => {
     }
   };
 });
+
+// ========================================
+// 소리 로드
+// ========================================
+const sounds = {
+  fairyCollect: new Audio()
+};
+
+// 소리 파일 경로 설정 (소리 파일이 있으면 경로를 설정하세요)
+// 예: sounds.fairyCollect.src = "sounds/fairy_collect.mp3";
+// sounds.fairyCollect.volume = 0.5;
+
+// 소리 재생 함수
+function playSound(soundName) {
+  try {
+    const sound = sounds[soundName];
+    if (sound && sound.src) {
+      // 소리 파일이 있으면 재생
+      sound.currentTime = 0; // 처음부터 재생
+      sound.play().catch(e => {
+        // 자동 재생이 차단된 경우 무시
+        console.log("소리 재생 실패:", e);
+      });
+    } else {
+      // 소리 파일이 없으면 Web Audio API로 간단한 소리 생성
+      createBeepSound();
+    }
+  } catch (e) {
+    // 소리 재생 실패 시 무시
+    console.log("소리 재생 오류:", e);
+  }
+}
+
+// 간단한 비프 소리 생성 (소리 파일이 없을 때 사용)
+function createBeepSound() {
+  try {
+    const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    const oscillator = audioContext.createOscillator();
+    const gainNode = audioContext.createGain();
+    
+    oscillator.connect(gainNode);
+    gainNode.connect(audioContext.destination);
+    
+    oscillator.frequency.value = 800; // 높은 톤
+    oscillator.type = "sine";
+    
+    gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+    gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.2);
+    
+    oscillator.start(audioContext.currentTime);
+    oscillator.stop(audioContext.currentTime + 0.2);
+  } catch (e) {
+    // Web Audio API를 사용할 수 없는 경우 무시
+    console.log("비프 소리 생성 실패:", e);
+  }
+}
 
 // ========================================
 // 게임 상태 변수
@@ -76,11 +138,11 @@ const storyTexts = [
 let player = {
   x: 180,
   y: 500,
-  width: 30,
-  height: 30,
+  width: 50,  // 크기 증가
+  height: 50, // 크기 증가
   xSpeed: 0,
   ySpeed: 0,
-  jumpPower: -10,
+  jumpPower: -12, // 점프력 약간 증가
   gravity: 0.4,
   grounded: false,
   lastDirection: "right", // "left" or "right"
@@ -107,7 +169,12 @@ let elapsedTime = 0;
 let keys = {};
 
 document.addEventListener("keydown", e => {
-  keys[e.key] = true;
+  // 스페이스바 키 처리 (여러 방식 지원)
+  if (e.key === " " || e.key === "Space" || e.code === "Space") {
+    keys[" "] = true;
+  } else {
+    keys[e.key] = true;
+  }
   
   // 스토리 화면에서 스킵
   if (gameState === "story" && e.key === "Escape") {
@@ -116,7 +183,7 @@ document.addEventListener("keydown", e => {
   }
   
   // 스토리 화면에서 다음 텍스트
-  if (gameState === "story" && (e.key === " " || e.key === "Enter")) {
+  if (gameState === "story" && (e.key === " " || e.key === "Enter" || e.key === "Space" || e.code === "Space")) {
     storyTextIndex++;
     if (storyTextIndex >= storyTexts.length) {
       gameState = "playing";
@@ -125,7 +192,7 @@ document.addEventListener("keydown", e => {
   }
   
   // 엔딩 화면에서 다음
-  if (gameState === "ending" && (e.key === " " || e.key === "Enter")) {
+  if (gameState === "ending" && (e.key === " " || e.key === "Enter" || e.key === "Space" || e.code === "Space")) {
     if (storyTextIndex === 0) {
       storyTextIndex = 1;
     } else {
@@ -134,7 +201,14 @@ document.addEventListener("keydown", e => {
   }
 });
 
-document.addEventListener("keyup", e => keys[e.key] = false);
+document.addEventListener("keyup", e => {
+  // 스페이스바 키 처리
+  if (e.key === " " || e.key === "Space" || e.code === "Space") {
+    keys[" "] = false;
+  } else {
+    keys[e.key] = false;
+  }
+});
 
 // ========================================
 // 게임 초기화
@@ -294,6 +368,16 @@ function startGame() {
   cameraOffsetX = 0;
   cameraOffsetY = 0;
   
+  // 바닥 전체에 보이지 않는 플랫폼 생성 (플레이어가 바닥에 떨어져도 서있을 수 있도록)
+  const floorPlatformY = canvas.height - 10; // 화면 하단
+  platforms.push({
+    x: -10000, // 왼쪽으로 충분히 넓게
+    y: floorPlatformY,
+    width: 20000, // 화면 전체를 덮을 수 있도록 충분히 넓게
+    height: 20,
+    invisible: true // 보이지 않는 플랫폼 표시
+  });
+  
   // 기본 플랫폼 생성
   const startPlatformY = canvas.height - 50;
   const startPlatformX = 150;
@@ -304,7 +388,8 @@ function startGame() {
     x: startPlatformX,
     y: startPlatformY,
     width: startPlatformWidth,
-    height: startPlatformHeight
+    height: startPlatformHeight,
+    invisible: false
   });
   
   // 플레이어를 기본 플랫폼 위에 배치
@@ -324,38 +409,109 @@ function generateInitialPlatforms() {
   const platformWidth = 80;
   const platformHeight = 10;
   const startPlatformY = canvas.height - 50;
-  const minPlatformY = 50;
-  const numPlatforms = 5;
+  const minPlatformY = 100;
+  const numPlatforms = 8;
+  
+  // 점프 가능한 거리 계산 (물리 기반)
+  // 점프 높이 = jumpPower^2 / (2 * gravity) = 12^2 / (2 * 0.4) = 144 / 0.8 = 180픽셀
+  // 수평 거리 = 점프 시간 * 수평 속도 (대략 3픽셀/프레임 * 60프레임 = 180픽셀)
+  const maxJumpHeight = (player.jumpPower * player.jumpPower) / (2 * player.gravity);
+  const maxHorizontalDistance = 180; // 수평 최대 거리
+  const maxVerticalDistance = maxJumpHeight * 0.8; // 안전 마진 포함
   
   for (let i = 0; i < numPlatforms; i++) {
-    const y = minPlatformY + i * 100;
-    const x = Math.random() * (canvas.width - platformWidth);
+    let y, x;
+    let attempts = 0;
+    let validPosition = false;
+    
+    // 유효한 위치를 찾을 때까지 시도
+    while (!validPosition && attempts < 50) {
+      attempts++;
+      
+      // Y 좌표: 위로 올라가면서 생성 (점프 가능한 거리 내)
+      y = startPlatformY - (i + 1) * (maxVerticalDistance * 0.7); // 더 안전한 간격
+      if (y < minPlatformY) {
+        y = minPlatformY + Math.random() * 50;
+      }
+      
+      // X 좌표: 이전 플랫폼에서 점프 가능한 거리 내에 생성
+      if (i === 0) {
+        // 첫 번째 플랫폼은 시작 플랫폼 근처에
+        x = 150 + (Math.random() - 0.5) * maxHorizontalDistance;
+      } else {
+        // 이전 플랫폼을 기준으로 점프 가능한 거리 내에 생성
+        const prevPlatform = platforms[platforms.length - 1];
+        const direction = Math.random() > 0.5 ? 1 : -1; // 왼쪽 또는 오른쪽
+        
+        // 거리 계산: 이전 플랫폼 중앙에서 새 플랫폼 중앙까지의 거리
+        const distance = 60 + Math.random() * (maxHorizontalDistance - 60);
+        x = prevPlatform.x + (prevPlatform.width / 2) + direction * distance - (platformWidth / 2);
+        
+        // 화면 경계 체크
+        if (x < 0) x = 20;
+        if (x + platformWidth > canvas.width) x = canvas.width - platformWidth - 20;
+      }
+      
+      // 이전 플랫폼과의 거리 확인
+      if (i === 0) {
+        validPosition = true;
+      } else {
+        const prevPlatform = platforms[platforms.length - 1];
+        const horizontalDist = Math.abs((prevPlatform.x + prevPlatform.width / 2) - (x + platformWidth / 2));
+        const verticalDist = Math.abs(prevPlatform.y - y);
+        const totalDist = Math.sqrt(horizontalDist * horizontalDist + verticalDist * verticalDist);
+        
+        // 점프 가능한 거리인지 확인 (대각선 거리 고려)
+        if (horizontalDist <= maxHorizontalDistance && verticalDist <= maxVerticalDistance) {
+          validPosition = true;
+        }
+      }
+    }
     
     platforms.push({
       x: x,
       y: y,
       width: platformWidth,
-      height: platformHeight
+      height: platformHeight,
+      invisible: false
     });
   }
 }
 
 function generateFairies() {
-  // 랜덤하게 요정 생성 (플랫폼 위에)
+  // 요정 3개 생성 (각각 다른 이미지 사용)
   const numFairies = 3;
   fairies = [];
   
+  // 요정 이미지 타입 배열
+  const fairyImages = ["fairy1", "fairy2", "fairy3"];
+  
+  // 각 요정이 다른 플랫폼에 생성되도록 보장
+  const usedPlatformIndices = [];
+  
   for (let i = 0; i < numFairies; i++) {
-    const platformIndex = Math.floor(Math.random() * platforms.length);
+    let platformIndex;
+    let attempts = 0;
+    
+    // 사용하지 않은 플랫폼을 찾을 때까지 시도
+    do {
+      platformIndex = Math.floor(Math.random() * platforms.length);
+      attempts++;
+      // 100번 시도해도 못 찾으면 그냥 사용
+      if (attempts > 100) break;
+    } while (usedPlatformIndices.includes(platformIndex));
+    
+    usedPlatformIndices.push(platformIndex);
     const platform = platforms[platformIndex];
     
     fairies.push({
-      x: platform.x + platform.width / 2 - 10,
-      y: platform.y - 20,
-      width: 20,
-      height: 20,
+      x: platform.x + platform.width / 2 - 15,
+      y: platform.y - 25,
+      width: 30,
+      height: 30,
       collected: false,
-      side: Math.random() > 0.5 ? "left" : "right" // 왼쪽 또는 오른쪽에서 나타남
+      side: Math.random() > 0.5 ? "left" : "right", // 왼쪽 또는 오른쪽에서 나타남
+      imageType: fairyImages[i] // 각 요정에 다른 이미지 할당
     });
   }
 }
@@ -366,39 +522,111 @@ function generateFairies() {
 function generatePlatformsAtBoundary(side) {
   const platformWidth = 80;
   const platformHeight = 10;
-  const numNewPlatforms = 3;
+  const numNewPlatforms = 5;
+  
+  // 점프 가능한 거리 계산 (물리 기반)
+  const maxJumpHeight = (player.jumpPower * player.jumpPower) / (2 * player.gravity);
+  const maxHorizontalDistance = 180; // 수평 최대 거리
+  const maxVerticalDistance = maxJumpHeight * 0.8; // 안전 마진 포함
+  
+  // 현재 플레이어 위치를 기준으로 플랫폼 생성
+  const playerY = player.y;
+  const minY = 100;
+  const maxY = canvas.height - 100;
+  
+  // 마지막 플랫폼 찾기 (플레이어가 있던 위치 근처)
+  let lastPlatform = null;
+  if (platforms.length > 0) {
+    // 플레이어와 가장 가까운 플랫폼 찾기
+    let closestDist = Infinity;
+    platforms.forEach(p => {
+      const dist = Math.abs(p.y - playerY);
+      if (dist < closestDist) {
+        closestDist = dist;
+        lastPlatform = p;
+      }
+    });
+  }
   
   for (let i = 0; i < numNewPlatforms; i++) {
     let x, y;
+    let attempts = 0;
+    let validPosition = false;
     
-    if (side === "left") {
-      // 왼쪽에서 벗어났을 때 오른쪽에 생성
-      x = canvas.width + Math.random() * 200;
-    } else {
-      // 오른쪽에서 벗어났을 때 왼쪽에 생성
-      x = -200 - Math.random() * 200;
+    // 유효한 위치를 찾을 때까지 시도
+    while (!validPosition && attempts < 50) {
+      attempts++;
+      
+      if (side === "left") {
+        // 왼쪽에서 벗어났을 때 오른쪽에 생성 (점프 가능한 거리 내)
+        if (i === 0 && lastPlatform) {
+          x = lastPlatform.x + lastPlatform.width + 50 + Math.random() * (maxHorizontalDistance - 50);
+        } else {
+          x = canvas.width + 50 + Math.random() * (maxHorizontalDistance - 50);
+        }
+      } else {
+        // 오른쪽에서 벗어났을 때 왼쪽에 생성 (점프 가능한 거리 내)
+        if (i === 0 && lastPlatform) {
+          x = lastPlatform.x - platformWidth - 50 - Math.random() * (maxHorizontalDistance - 50);
+        } else {
+          x = -maxHorizontalDistance + Math.random() * (maxHorizontalDistance - 50);
+        }
+      }
+      
+      // Y 좌표: 플레이어 위치 기준으로 점프 가능한 거리 내에 생성
+      if (i === 0) {
+        // 첫 번째 플랫폼은 플레이어와 비슷한 높이 또는 약간 위
+        y = playerY - 30 - Math.random() * 80;
+      } else {
+        // 이전 플랫폼 기준으로 위로 올라가면서 생성
+        const prevPlatform = platforms[platforms.length - 1];
+        y = prevPlatform.y - (maxVerticalDistance * 0.7) + Math.random() * 30;
+      }
+      
+      // Y 좌표 범위 제한
+      if (y < minY) y = minY + Math.random() * 50;
+      if (y > maxY) y = maxY - Math.random() * 50;
+      
+      // 이전 플랫폼과의 거리 확인
+      if (i === 0) {
+        validPosition = true;
+      } else {
+        const prevPlatform = platforms[platforms.length - 1];
+        const horizontalDist = Math.abs((prevPlatform.x + prevPlatform.width / 2) - (x + platformWidth / 2));
+        const verticalDist = Math.abs(prevPlatform.y - y);
+        
+        // 점프 가능한 거리인지 확인
+        if (horizontalDist <= maxHorizontalDistance && verticalDist <= maxVerticalDistance) {
+          validPosition = true;
+        }
+      }
     }
-    
-    y = 100 + i * 150 + Math.random() * 50;
     
     platforms.push({
       x: x,
       y: y,
       width: platformWidth,
-      height: platformHeight
+      height: platformHeight,
+      invisible: false
     });
   }
   
   // 새 플랫폼에 요정 추가 (확률적으로)
   if (Math.random() > 0.5 && fairies.length < 3) {
     const newPlatform = platforms[platforms.length - 1];
+    // 아직 수집하지 않은 요정 이미지 타입 찾기
+    const usedImages = fairies.map(f => f.imageType).filter(Boolean);
+    const availableImages = ["fairy1", "fairy2", "fairy3"].filter(img => !usedImages.includes(img));
+    const imageType = availableImages.length > 0 ? availableImages[0] : "fairy1";
+    
     fairies.push({
-      x: newPlatform.x + newPlatform.width / 2 - 10,
-      y: newPlatform.y - 20,
-      width: 20,
-      height: 20,
+      x: newPlatform.x + newPlatform.width / 2 - 15,
+      y: newPlatform.y - 25,
+      width: 30,
+      height: 30,
       collected: false,
-      side: side
+      side: side,
+      imageType: imageType
     });
   }
 }
@@ -410,10 +638,8 @@ function generatePlatformsAtBoundary(side) {
 // 배경 그리기
 function drawBackground() {
   if (images.background.complete && images.background.naturalWidth > 0) {
-    // 배경을 타일링하여 그리기
-    const pattern = ctx.createPattern(images.background, "repeat");
-    ctx.fillStyle = pattern;
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    // 배경 이미지를 전체 화면에 맞춰 그리기
+    ctx.drawImage(images.background, 0, 0, canvas.width, canvas.height);
   } else {
     ctx.fillStyle = "#87CEEB";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -454,7 +680,10 @@ function drawPlayer() {
 function drawPlatforms() {
   ctx.fillStyle = "#8B4513";
   platforms.forEach(p => {
-    ctx.fillRect(p.x - cameraOffsetX, p.y - cameraOffsetY, p.width, p.height);
+    // 보이지 않는 플랫폼은 그리지 않음
+    if (!p.invisible) {
+      ctx.fillRect(p.x - cameraOffsetX, p.y - cameraOffsetY, p.width, p.height);
+    }
   });
 }
 
@@ -462,36 +691,31 @@ function drawPlatforms() {
 function drawFairies() {
   fairies.forEach(fairy => {
     if (!fairy.collected) {
-      // 요정을 노란색 원으로 표시
-      ctx.fillStyle = "#FFD700";
-      ctx.beginPath();
-      ctx.arc(
-        fairy.x - cameraOffsetX + fairy.width / 2,
-        fairy.y - cameraOffsetY + fairy.height / 2,
-        fairy.width / 2,
-        0,
-        Math.PI * 2
-      );
-      ctx.fill();
+      // 요정 이미지 가져오기
+      const img = images[fairy.imageType];
       
-      // 요정 눈
-      ctx.fillStyle = "black";
-      ctx.beginPath();
-      ctx.arc(
-        fairy.x - cameraOffsetX + fairy.width / 2 - 5,
-        fairy.y - cameraOffsetY + fairy.height / 2 - 2,
-        2,
-        0,
-        Math.PI * 2
-      );
-      ctx.arc(
-        fairy.x - cameraOffsetX + fairy.width / 2 + 5,
-        fairy.y - cameraOffsetY + fairy.height / 2 - 2,
-        2,
-        0,
-        Math.PI * 2
-      );
-      ctx.fill();
+      // 이미지가 로드되었으면 그리기
+      if (img && img.complete && img.naturalWidth > 0) {
+        ctx.drawImage(
+          img,
+          fairy.x - cameraOffsetX,
+          fairy.y - cameraOffsetY,
+          fairy.width,
+          fairy.height
+        );
+      } else {
+        // 이미지가 없으면 기본 원으로 표시
+        ctx.fillStyle = "#FFD700";
+        ctx.beginPath();
+        ctx.arc(
+          fairy.x - cameraOffsetX + fairy.width / 2,
+          fairy.y - cameraOffsetY + fairy.height / 2,
+          fairy.width / 2,
+          0,
+          Math.PI * 2
+        );
+        ctx.fill();
+      }
     }
   });
 }
@@ -524,7 +748,8 @@ function updatePlayerMovement() {
   player.y += player.ySpeed;
   
   // 점프 (바닥에 서있을 때만 가능)
-  if (player.grounded && keys[" "]) {
+  // 스페이스바 또는 위쪽 화살표 키로 점프
+  if (player.grounded && (keys[" "] || keys["ArrowUp"])) {
     player.ySpeed = player.jumpPower;
     player.grounded = false;
   }
@@ -562,6 +787,7 @@ function updatePlayerMovement() {
 
 // 플랫폼 충돌 검사
 function checkPlatformCollision() {
+  let wasGrounded = player.grounded;
   player.grounded = false;
   
   platforms.forEach(p => {
@@ -578,6 +804,11 @@ function checkPlatformCollision() {
       player.grounded = true;
     }
   });
+  
+  // 바닥에 떨어졌을 때도 점프 가능하도록
+  if (player.y + player.height >= canvas.height) {
+    player.grounded = true;
+  }
 }
 
 // 요정 충돌 검사
@@ -593,6 +824,9 @@ function checkFairyCollision() {
       if (isColliding) {
         fairy.collected = true;
         fairyCount++;
+        
+        // 요정 수집 소리 재생
+        playSound("fairyCollect");
         
         // 3명의 요정을 모두 만나면 엔딩
         if (fairyCount >= 3) {
